@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>PIM Auto Ativar</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #666;
+      --border: #d9d9d9;
+      --accent: #0067b8;
+      --accent-fg: #ffffff;
+      --ok: #107c10;
+      --err: #c42b1c;
+      --warn: #9d5d00;
+      --row: #f6f6f6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1f1f1f;
+        --fg: #eaeaea;
+        --muted: #9a9a9a;
+        --border: #3c3c3c;
+        --accent: #4da3e0;
+        --accent-fg: #10202e;
+        --ok: #6ccb5f;
+        --err: #ff7b6e;
+        --warn: #e0a835;
+        --row: #292929;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      width: 420px;
+      margin: 0;
+      padding: 12px;
+      font: 13px/1.4 system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    #status { color: var(--muted); margin-bottom: 8px; }
+    #status.err { color: var(--err); }
+    .controls { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+    input[type="text"], select {
+      background: var(--bg); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px;
+    }
+    #filter { flex: 1 1 160px; }
+    #justification { flex: 1 1 100%; }
+    button {
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 5px 10px; cursor: pointer;
+      background: var(--row); color: var(--fg);
+    }
+    button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    #list { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; }
+    .role {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px; border-bottom: 1px solid var(--border);
+    }
+    .role:last-child { border-bottom: none; }
+    .role:nth-child(odd) { background: var(--row); }
+    .role .info { flex: 1; min-width: 0; }
+    .role .name { font-weight: 600; }
+    .role .scope { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .role .state { font-size: 12px; white-space: nowrap; }
+    .state.ok { color: var(--ok); }
+    .state.err { color: var(--err); }
+    .state.warn { color: var(--warn); }
+    .msg { flex-basis: 100%; font-size: 11px; color: var(--err); padding: 0 8px 6px 32px; }
+    .empty { padding: 14px; color: var(--muted); text-align: center; }
+    footer { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+    footer .spacer { flex: 1; }
+    #summary { color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>PIM Auto Ativar</h1>
+  <div id="status">Verificando sessão…</div>
+
+  <div class="controls">
+    <input type="text" id="filter" placeholder="Filtro (parte do nome da função ou do recurso)" />
+    <select id="duration">
+      <option value="1">1 h</option>
+      <option value="2">2 h</option>
+      <option value="4">4 h</option>
+      <option value="8" selected>8 h</option>
+    </select>
+    <button id="reload" title="Recarregar lista">↻</button>
+    <input type="text" id="justification" placeholder="Justificativa (ex.: Ativação diária de rotina)" />
+  </div>
+
+  <div id="list"><div class="empty">Carregando…</div></div>
+
+  <footer>
+    <span id="summary"></span>
+    <span class="spacer"></span>
+    <button id="toggleAll">Marcar todas</button>
+    <button id="activate" class="primary">Ativar selecionadas</button>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

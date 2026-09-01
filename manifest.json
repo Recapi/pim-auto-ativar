@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "PIM Auto Ativar",
+  "version": "1.0.0",
+  "description": "Ativa de uma vez todas as suas funções elegíveis do Azure PIM (Privileged Identity Management) que combinam com o seu filtro.",
+  "permissions": ["webRequest", "storage"],
+  "host_permissions": ["https://management.azure.com/*"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PIM Auto Ativar"
+  }
+}
