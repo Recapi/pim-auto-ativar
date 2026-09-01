@@ -27,8 +27,21 @@
   const ST = "color:#0067b8;font-weight:bold";
   const log = (...a) => console.log(TAG, ST, ...a);
 
+  const VERSAO = 2;
   let token = null;
   let roles = [];
+  const urlsVistas = []; // buffer de URLs que o portal chamou (para pimDebug)
+  const registrarUrl = (url) => {
+    try {
+      const u = String(url);
+      if (
+        /management\.azure\.com|azrbac|mspim|privilegedaccess|roleEligibility|roleAssignment/i.test(u)
+      ) {
+        urlsVistas.push(u.slice(0, 300));
+        if (urlsVistas.length > 300) urlsVistas.shift();
+      }
+    } catch {}
+  };
 
   // ---- Captura do token: observa as chamadas que o próprio portal faz ----
   const getHeader = (headers, name) => {
@@ -50,6 +63,7 @@
   window.fetch = function (input, init) {
     try {
       const url = typeof input === "string" ? input : input && input.url;
+      registrarUrl(url);
       if (url && url.includes("management.azure.com")) {
         let auth = init && getHeader(init.headers, "Authorization");
         if (!auth && input && typeof input.headers?.get === "function") {
@@ -65,6 +79,7 @@
   const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
   XMLHttpRequest.prototype.open = function (method, url) {
     this.__pimUrl = url;
+    registrarUrl(url);
     return origOpen.apply(this, arguments);
   };
   XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
@@ -147,17 +162,71 @@
     });
   }
 
+  // Consulta um tipo de instância (eligibility/assignment) em vários escopos e
+  // junta tudo sem duplicatas (a mesma função pode aparecer por herança).
+  async function coletarInstancias(tipo, escopos) {
+    const porId = new Map();
+    for (const escopo of escopos) {
+      try {
+        const itens = await armFetchAll(
+          `${escopo}/providers/Microsoft.Authorization/${tipo}?api-version=${API}&$filter=asTarget()`
+        );
+        for (const it of itens) porId.set((it.id || "").toLowerCase(), it);
+      } catch (e) {
+        console.warn(`[PIM] Falha ao consultar ${tipo} em ${escopo}:`, e.message || e);
+      }
+    }
+    return [...porId.values()];
+  }
+
+  async function descobrirEscopos() {
+    const escopos = [];
+    // Assinaturas visíveis para o usuário:
+    try {
+      const subs = await armFetchAll(`/subscriptions?api-version=2020-01-01`);
+      for (const s of subs) escopos.push(`/subscriptions/${s.subscriptionId}`);
+      log(`${subs.length} assinatura(s) visível(is).`);
+    } catch (e) {
+      console.warn("[PIM] Não consegui listar assinaturas:", e.message || e);
+    }
+    // Grupos de gerenciamento (nem todo usuário enxerga; falha é normal):
+    try {
+      const mgs = await armFetchAll(
+        `/providers/Microsoft.Management/managementGroups?api-version=2021-04-01`
+      );
+      for (const m of mgs) escopos.push(`/providers/Microsoft.Management/managementGroups/${m.name}`);
+    } catch {}
+    return escopos;
+  }
+
   async function carregar() {
     await esperarToken();
     log("Sessão capturada. Buscando suas funções elegíveis…");
-    const [eligible, active] = await Promise.all([
+    // 1ª tentativa: consulta única no escopo raiz (funciona em alguns tenants).
+    let [eligible, active] = await Promise.all([
       armFetchAll(
         `/providers/Microsoft.Authorization/roleEligibilityScheduleInstances?api-version=${API}&$filter=asTarget()`
-      ),
+      ).catch(() => []),
       armFetchAll(
         `/providers/Microsoft.Authorization/roleAssignmentScheduleInstances?api-version=${API}&$filter=asTarget()`
-      ),
+      ).catch(() => []),
     ]);
+
+    // 2ª tentativa: se veio vazio, pergunta escopo por escopo (como o portal faz).
+    if (!eligible.length) {
+      log("Consulta global veio vazia — varrendo assinatura por assinatura…");
+      const escopos = await descobrirEscopos();
+      if (escopos.length) {
+        [eligible, active] = await Promise.all([
+          coletarInstancias("roleEligibilityScheduleInstances", escopos),
+          coletarInstancias("roleAssignmentScheduleInstances", escopos),
+        ]);
+      } else {
+        log(
+          "Nenhuma assinatura visível. Rode pimDebug() após clicar em 'Atualizar' na tela do PIM e me envie as URLs listadas."
+        );
+      }
+    }
 
     const ativas = new Map();
     for (const a of active) {
@@ -226,6 +295,17 @@
 
   window.pimListar = () => listar();
 
+  // Diagnóstico: mostra as URLs de PIM/ARM que o portal chamou (clique em
+  // "Atualizar" na tela do PIM antes, para forçar as chamadas).
+  window.pimDebug = () => {
+    const relevantes = urlsVistas.filter((u) =>
+      /roleEligibility|roleAssignment|azrbac|mspim|privilegedaccess/i.test(u)
+    );
+    console.log("[PIM] URLs capturadas:");
+    (relevantes.length ? relevantes : urlsVistas).forEach((u) => console.log("  " + u));
+    if (!urlsVistas.length) console.log("  (nenhuma ainda — clique em 'Atualizar' na tela do PIM)");
+  };
+
   window.pimAtivar = async (filtro = FILTRO) => {
     const alvo = roles.filter((r) => combinaFiltro(r, filtro) && !r.activeUntil);
     if (!alvo.length) {
@@ -260,9 +340,16 @@
   };
 
   // ---- Início ----
+  log(`v${VERSAO} carregado.`);
   carregar()
     .then(() => {
       log(`${roles.length} função(ões) elegível(is) encontradas:`);
+      if (!roles.length) {
+        log(
+          "Lista vazia. Clique em 'Atualizar' na tela do PIM, digite pimDebug() e me envie as URLs que aparecerem."
+        );
+        return;
+      }
       listar();
       const n = roles.filter((r) => combinaFiltro(r, FILTRO) && !r.activeUntil).length;
       log(
